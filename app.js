@@ -1,11 +1,6 @@
 const root = document.getElementById("screenRoot");
 const userMeta = document.getElementById("userMeta");
 
-/**
- * Supabase Auth uses EMAIL + password.
- * We simulate "username" by converting it into an email:
- *   username@riyad.local
- */
 const USERNAME_EMAIL_DOMAIN = "riyad.local";
 
 /* ===== Supabase Config (NEW PROJECT) ===== */
@@ -25,23 +20,24 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 let session = null; // { user, role, username }
 
 /* ===== Helpers ===== */
-function setScreen(html) {
-  root.innerHTML = html;
+function setScreen(html) { root.innerHTML = html; }
+function setHeroBackground(isOn) { document.body.classList.toggle("hero-bg", Boolean(isOn)); }
+function escapeHtml(s) {
+  return String(s || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
-function setHeroBackground(isOn) {
-  document.body.classList.toggle("hero-bg", Boolean(isOn));
-}
-function showError(msg) {
-  alert(msg);
-}
-function usernameToEmail(username) {
-  return `${username}@${USERNAME_EMAIL_DOMAIN}`;
+function toEmail(input) {
+  const v = (input || "").trim().toLowerCase();
+  if (!v) return "";
+  // If user typed an email already, use it directly
+  if (v.includes("@")) return v;
+  return `${v}@${USERNAME_EMAIL_DOMAIN}`;
 }
 
-/* ===== Role Fetch =====
-   We read role from public.profiles:
-   profiles(id uuid pk references auth.users(id), username text, role text)
-*/
 async function loadProfileRole(user) {
   if (!user) return { role: "Viewer", username: "" };
 
@@ -51,30 +47,30 @@ async function loadProfileRole(user) {
     .eq("id", user.id)
     .maybeSingle();
 
-  // If profiles isn't created / policy issue, fallback to Viewer safely
-  if (error) {
-    return { role: "Viewer", username: user.email?.split("@")[0] || "" };
-  }
+  // If profiles not ready / policy issue, fallback safely
+  if (error) return { role: "Viewer", username: user.email?.split("@")[0] || "" };
 
   const role = (data?.role || "Viewer").trim();
   const username = (data?.username || user.email?.split("@")[0] || "").trim();
   return { role, username };
 }
 
-/* ===== Screens ===== */
 function renderLoading(title = "جاري التحميل...") {
   setHeroBackground(true);
   userMeta.textContent = "";
   setScreen(`
     <div>
-      <h1 class="h1">${title}</h1>
+      <h1 class="h1">${escapeHtml(title)}</h1>
       <p class="p">لحظات...</p>
       <div class="hint-bar"></div>
+      <div class="notice" style="margin-top:14px;">
+        متصل بـ Supabase: <b>${escapeHtml(SUPABASE_URL)}</b>
+      </div>
     </div>
   `);
 }
 
-function renderLogin() {
+function renderLogin(debugMsg = "") {
   setHeroBackground(true);
   userMeta.textContent = "";
 
@@ -85,8 +81,8 @@ function renderLogin() {
       <div class="hint-bar"></div>
 
       <div class="field">
-        <label>اسم المستخدم</label>
-        <input id="u" placeholder="مثال: admin" autocomplete="username" />
+        <label>اسم المستخدم أو البريد</label>
+        <input id="u" placeholder="مثال: admin أو admin@riyad.local" autocomplete="username" />
       </div>
 
       <div class="field">
@@ -99,30 +95,37 @@ function renderLogin() {
       </div>
 
       <div class="notice">
-        يتم تسجيل الدخول عبر Supabase.
+        <div>معلومة: إذا كتبت <b>admin</b> يتم تحويله إلى <b>admin@${escapeHtml(USERNAME_EMAIL_DOMAIN)}</b></div>
+        <div style="margin-top:8px;">متصل بـ Supabase: <b>${escapeHtml(SUPABASE_URL)}</b></div>
+        ${debugMsg ? `<div style="margin-top:10px; color:#b42318; white-space:pre-wrap;">${escapeHtml(debugMsg)}</div>` : ""}
       </div>
     </div>
   `);
 
   document.getElementById("loginBtn").onclick = async () => {
-    const username = document.getElementById("u").value.trim().toLowerCase();
-    const password = document.getElementById("p").value.trim();
+    const u = document.getElementById("u").value;
+    const p = document.getElementById("p").value;
 
-    if (!username || !password) return showError("الرجاء إدخال اسم المستخدم وكلمة المرور.");
+    const email = toEmail(u);
+    const password = (p || "").trim();
+
+    if (!email || !password) {
+      return renderLogin("الرجاء إدخال اسم المستخدم/البريد وكلمة المرور.");
+    }
 
     renderLoading("تسجيل الدخول...");
 
-    const email = usernameToEmail(username);
     const { data, error } = await sb.auth.signInWithPassword({ email, password });
 
     if (error) {
-      renderLogin();
-      return showError("بيانات الدخول غير صحيحة.");
+      // THIS is the real reason:
+      const msg = `فشل تسجيل الدخول من Supabase:\n${error.message}\n\nالبريد المستخدم: ${email}`;
+      return renderLogin(msg);
     }
 
     const user = data?.user;
     const profile = await loadProfileRole(user);
-    session = { user, role: profile.role, username: profile.username || username };
+    session = { user, role: profile.role, username: profile.username || (email.split("@")[0] || "") };
 
     renderMainDashboard();
   };
@@ -132,7 +135,7 @@ function renderMainDashboard() {
   setHeroBackground(true);
   if (!session?.user) return renderLogin();
 
-  const role = session.role; // Admin | Evaluator | Viewer
+  const role = session.role;
   const isAdmin = role === "Admin";
   const isEval = role === "Admin" || role === "Evaluator";
   const isViewer = role === "Viewer";
@@ -253,6 +256,7 @@ function renderMainDashboard() {
 
       <div class="notice">
         ${isViewer ? "وضع المشاهد: يمكنك الوصول للنتائج ولوحة المتابعة فقط." : "تظهر لك الأزرار حسب الصلاحية."}
+        <div style="margin-top:8px;">Supabase: <b>${escapeHtml(SUPABASE_URL)}</b></div>
       </div>
 
     </div>
@@ -271,7 +275,6 @@ function renderMainDashboard() {
   });
 }
 
-/* ===== Auth bootstrap ===== */
 async function initAuthFlow() {
   renderLoading("تهيئة النظام...");
 
