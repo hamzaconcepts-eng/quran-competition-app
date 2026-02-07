@@ -14,38 +14,45 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let session = null;
 
-/* ===== Connection Indicator ===== */
+/* ===== FORCE connection indicator (ALWAYS visible) ===== */
 function mountConnectionIndicator() {
   if (document.getElementById("conn-indicator")) return;
 
-  const dot = document.createElement("div");
-  dot.id = "conn-indicator";
-  dot.style.position = "fixed";
-  dot.style.bottom = "14px";
-  dot.style.left = "14px";
-  dot.style.width = "12px";
-  dot.style.height = "12px";
-  dot.style.borderRadius = "50%";
-  dot.style.background = "#b42318"; // red by default
-  dot.style.boxShadow = "0 0 0 4px rgba(180,35,24,0.25)";
-  dot.style.zIndex = "9999";
-  document.body.appendChild(dot);
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `
+    <div id="conn-indicator"
+      style="
+        position:fixed;
+        bottom:16px;
+        left:16px;
+        width:14px;
+        height:14px;
+        border-radius:50%;
+        background:#b42318;
+        box-shadow:0 0 0 5px rgba(180,35,24,.25);
+        z-index:2147483647;
+        pointer-events:none;
+      ">
+    </div>
+    `
+  );
 }
 
-function setConnectionStatus(isConnected) {
+function setConnectionStatus(ok) {
   const dot = document.getElementById("conn-indicator");
   if (!dot) return;
 
-  if (isConnected) {
-    dot.style.background = "#1a7f37"; // green
-    dot.style.boxShadow = "0 0 0 4px rgba(26,127,55,0.25)";
+  if (ok) {
+    dot.style.background = "#1a7f37";
+    dot.style.boxShadow = "0 0 0 5px rgba(26,127,55,.25)";
   } else {
-    dot.style.background = "#b42318"; // red
-    dot.style.boxShadow = "0 0 0 4px rgba(180,35,24,0.25)";
+    dot.style.background = "#b42318";
+    dot.style.boxShadow = "0 0 0 5px rgba(180,35,24,.25)";
   }
 }
 
-async function checkSupabaseConnection() {
+async function checkConnection() {
   try {
     const { error } = await sb.auth.getSession();
     setConnectionStatus(!error);
@@ -58,8 +65,8 @@ async function checkSupabaseConnection() {
 function setScreen(html) {
   root.innerHTML = html;
 }
-function setHeroBackground(isOn) {
-  document.body.classList.toggle("hero-bg", Boolean(isOn));
+function setHeroBackground(on) {
+  document.body.classList.toggle("hero-bg", Boolean(on));
 }
 function toEmail(input) {
   const v = (input || "").trim().toLowerCase();
@@ -70,7 +77,6 @@ function toEmail(input) {
 
 async function loadProfileRole(user) {
   if (!user) return { role: "Viewer", username: "" };
-
   const { data } = await sb
     .from("profiles")
     .select("role, username")
@@ -84,18 +90,6 @@ async function loadProfileRole(user) {
 }
 
 /* ===== Screens ===== */
-function renderLoading(title = "جاري الدخول...") {
-  setHeroBackground(true);
-  userMeta.textContent = "";
-  setScreen(`
-    <div>
-      <h1 class="h1">${title}</h1>
-      <p class="p">لحظات...</p>
-      <div class="hint-bar"></div>
-    </div>
-  `);
-}
-
 function renderLogin(note = "") {
   setHeroBackground(true);
   userMeta.textContent = "";
@@ -113,7 +107,7 @@ function renderLogin(note = "") {
 
       <div class="field">
         <label>كلمة المرور</label>
-        <input id="p" type="password" placeholder="••••••••" autocomplete="new-password" />
+        <input id="p" type="password" autocomplete="new-password" />
       </div>
 
       <div class="actions">
@@ -124,85 +118,40 @@ function renderLogin(note = "") {
     </div>
   `);
 
-  const uEl = document.getElementById("u");
-  const pEl = document.getElementById("p");
+  const u = document.getElementById("u");
+  const p = document.getElementById("p");
   const btn = document.getElementById("loginBtn");
-
-  pEl.value = ""; // ensure empty
+  p.value = ""; // ALWAYS empty
 
   const onEnter = (e) => e.key === "Enter" && btn.click();
-  uEl.addEventListener("keydown", onEnter);
-  pEl.addEventListener("keydown", onEnter);
+  u.addEventListener("keydown", onEnter);
+  p.addEventListener("keydown", onEnter);
 
   btn.onclick = async () => {
-    const email = toEmail(uEl.value);
-    const password = (pEl.value || "").trim();
-
-    if (!email || !password) {
-      return renderLogin("الرجاء إدخال كلمة المرور.");
-    }
-
-    renderLoading();
+    const email = toEmail(u.value);
+    const password = p.value.trim();
+    if (!password) return renderLogin("الرجاء إدخال كلمة المرور.");
 
     const { data, error } = await sb.auth.signInWithPassword({ email, password });
+    if (error) return renderLogin("بيانات الدخول غير صحيحة.");
 
-    if (error) {
-      return renderLogin("بيانات الدخول غير صحيحة.");
-    }
-
-    const user = data.user;
-    const profile = await loadProfileRole(user);
-    session = { user, role: profile.role, username: profile.username };
-
+    const profile = await loadProfileRole(data.user);
+    session = { user: data.user, role: profile.role, username: profile.username };
     renderMainDashboard();
   };
 }
 
 function renderMainDashboard() {
   setHeroBackground(true);
-  if (!session?.user) return renderLogin();
-
-  const role = session.role;
-  const isAdmin = role === "Admin";
-  const isEval = role === "Admin" || role === "Evaluator";
-
-  userMeta.textContent = `${session.username} • ${role}`;
+  userMeta.textContent = `${session.username} • ${session.role}`;
 
   setScreen(`
-    <div class="dashboard-head">
-      <div>
-        <h1 class="h1">اللوحة الرئيسية</h1>
-        <p class="p">واجهة التحكم والتنقل بين الشاشات.</p>
-      </div>
-    </div>
-
-    <div class="hint-bar"></div>
-
-    <div class="sections">
-      <div class="section">
-        <h3>الإدارة والتسجيل</h3>
-        <button ${isAdmin ? "" : "disabled"}>تسجيل متسابق جديد</button>
-      </div>
-
-      <div class="section">
-        <h3>التقييم والمتسابقون</h3>
-        <button ${isEval ? "" : "disabled"}>المتسابقون</button>
-        <button ${isEval ? "" : "disabled"}>التقييم</button>
-      </div>
-
-      <div class="section">
-        <h3>العرض</h3>
-        <button>النتائج</button>
-        <button>لوحة المتابعة المباشرة</button>
-      </div>
-
-      <div class="actions">
-        <button id="btnLogout">تسجيل الخروج</button>
-      </div>
-    </div>
+    <h1 class="h1">اللوحة الرئيسية</h1>
+    <p class="p">تم تسجيل الدخول بنجاح.</p>
+    <button id="logout">تسجيل الخروج</button>
   `);
 
-  document.getElementById("btnLogout").onclick = async () => {
+  document.getElementById("logout").onclick = async () => {
     await sb.auth.signOut();
     session = null;
     renderLogin();
@@ -211,16 +160,19 @@ function renderMainDashboard() {
 
 /* ===== Init ===== */
 async function init() {
-  mountConnectionIndicator();
-  await checkSupabaseConnection();
+  mountConnectionIndicator();     // ← يظهر فورًا
+  await checkConnection();        // ← يلوّن أخضر/أحمر
 
   const { data } = await sb.auth.getSession();
   if (!data.session) {
     renderLogin();
   } else {
-    const user = data.session.user;
-    const profile = await loadProfileRole(user);
-    session = { user, role: profile.role, username: profile.username };
+    const profile = await loadProfileRole(data.session.user);
+    session = {
+      user: data.session.user,
+      role: profile.role,
+      username: profile.username,
+    };
     renderMainDashboard();
   }
 }
