@@ -10,15 +10,49 @@ const SUPABASE_ANON_KEY =
 
 /* global supabase */
 const { createClient } = supabase;
-const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
-  },
-});
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let session = null;
+
+/* ===== Connection Indicator ===== */
+function mountConnectionIndicator() {
+  if (document.getElementById("conn-indicator")) return;
+
+  const dot = document.createElement("div");
+  dot.id = "conn-indicator";
+  dot.style.position = "fixed";
+  dot.style.bottom = "14px";
+  dot.style.left = "14px";
+  dot.style.width = "12px";
+  dot.style.height = "12px";
+  dot.style.borderRadius = "50%";
+  dot.style.background = "#b42318"; // red by default
+  dot.style.boxShadow = "0 0 0 4px rgba(180,35,24,0.25)";
+  dot.style.zIndex = "9999";
+  document.body.appendChild(dot);
+}
+
+function setConnectionStatus(isConnected) {
+  const dot = document.getElementById("conn-indicator");
+  if (!dot) return;
+
+  if (isConnected) {
+    dot.style.background = "#1a7f37"; // green
+    dot.style.boxShadow = "0 0 0 4px rgba(26,127,55,0.25)";
+  } else {
+    dot.style.background = "#b42318"; // red
+    dot.style.boxShadow = "0 0 0 4px rgba(180,35,24,0.25)";
+  }
+}
+
+async function checkSupabaseConnection() {
+  try {
+    const { error } = await sb.auth.getSession();
+    setConnectionStatus(!error);
+  } catch {
+    setConnectionStatus(false);
+  }
+}
 
 /* ===== Helpers ===== */
 function setScreen(html) {
@@ -79,13 +113,7 @@ function renderLogin(note = "") {
 
       <div class="field">
         <label>كلمة المرور</label>
-        <input
-          id="p"
-          type="password"
-          value=""
-          placeholder="••••••••"
-          autocomplete="new-password"
-        />
+        <input id="p" type="password" placeholder="••••••••" autocomplete="new-password" />
       </div>
 
       <div class="actions">
@@ -100,12 +128,9 @@ function renderLogin(note = "") {
   const pEl = document.getElementById("p");
   const btn = document.getElementById("loginBtn");
 
-  // 🔒 ضمان أن كلمة المرور فارغة دائمًا
-  pEl.value = "";
+  pEl.value = ""; // ensure empty
 
-  const onEnter = (e) => {
-    if (e.key === "Enter") btn.click();
-  };
+  const onEnter = (e) => e.key === "Enter" && btn.click();
   uEl.addEventListener("keydown", onEnter);
   pEl.addEventListener("keydown", onEnter);
 
@@ -143,8 +168,6 @@ function renderMainDashboard() {
 
   userMeta.textContent = `${session.username} • ${role}`;
 
-  const noop = () => alert("هذه الشاشة سنبنيها لاحقًا.");
-
   setScreen(`
     <div class="dashboard-head">
       <div>
@@ -157,74 +180,49 @@ function renderMainDashboard() {
 
     <div class="sections">
       <div class="section">
-        <div class="section-title">
-          <h3>الإدارة والتسجيل</h3>
-          <span>Admin فقط</span>
-        </div>
-        <div class="action-grid">
-          <button class="action-card" ${isAdmin ? "" : "disabled"} id="btnRegister">
-            تسجيل متسابق جديد
-          </button>
-        </div>
+        <h3>الإدارة والتسجيل</h3>
+        <button ${isAdmin ? "" : "disabled"}>تسجيل متسابق جديد</button>
       </div>
 
       <div class="section">
-        <div class="section-title">
-          <h3>التقييم والمتسابقون</h3>
-          <span>Admin / Evaluator</span>
-        </div>
-        <div class="action-grid">
-          <button class="action-card" ${isEval ? "" : "disabled"} id="btnCompetitors">
-            المتسابقون
-          </button>
-          <button class="action-card" ${isEval ? "" : "disabled"} id="btnEvaluate">
-            التقييم
-          </button>
-        </div>
+        <h3>التقييم والمتسابقون</h3>
+        <button ${isEval ? "" : "disabled"}>المتسابقون</button>
+        <button ${isEval ? "" : "disabled"}>التقييم</button>
       </div>
 
       <div class="section">
-        <div class="section-title">
-          <h3>العرض</h3>
-          <span>الجميع</span>
-        </div>
-        <div class="action-grid">
-          <button class="action-card" id="btnResults">النتائج</button>
-          <button class="action-card" id="btnLive">لوحة المتابعة المباشرة</button>
-        </div>
+        <h3>العرض</h3>
+        <button>النتائج</button>
+        <button>لوحة المتابعة المباشرة</button>
       </div>
 
       <div class="actions">
-        <button class="accent" id="btnLogout">تسجيل الخروج</button>
+        <button id="btnLogout">تسجيل الخروج</button>
       </div>
     </div>
   `);
 
-  document.getElementById("btnRegister")?.addEventListener("click", noop);
-  document.getElementById("btnCompetitors")?.addEventListener("click", noop);
-  document.getElementById("btnEvaluate")?.addEventListener("click", noop);
-  document.getElementById("btnResults")?.addEventListener("click", noop);
-  document.getElementById("btnLive")?.addEventListener("click", noop);
-
-  document.getElementById("btnLogout")?.addEventListener("click", async () => {
+  document.getElementById("btnLogout").onclick = async () => {
     await sb.auth.signOut();
     session = null;
     renderLogin();
-  });
+  };
 }
 
 /* ===== Init ===== */
-async function initAuthFlow() {
+async function init() {
+  mountConnectionIndicator();
+  await checkSupabaseConnection();
+
   const { data } = await sb.auth.getSession();
   if (!data.session) {
-    return renderLogin();
+    renderLogin();
+  } else {
+    const user = data.session.user;
+    const profile = await loadProfileRole(user);
+    session = { user, role: profile.role, username: profile.username };
+    renderMainDashboard();
   }
-
-  const user = data.session.user;
-  const profile = await loadProfileRole(user);
-  session = { user, role: profile.role, username: profile.username };
-
-  renderMainDashboard();
 }
 
-initAuthFlow();
+init();
