@@ -79,7 +79,13 @@ function renderLogin(note = "") {
 
       <div class="field">
         <label>كلمة المرور</label>
-        <input id="p" type="password" placeholder="••••••••" autocomplete="current-password" />
+        <input
+          id="p"
+          type="password"
+          value=""
+          placeholder="••••••••"
+          autocomplete="new-password"
+        />
       </div>
 
       <div class="actions">
@@ -93,6 +99,9 @@ function renderLogin(note = "") {
   const uEl = document.getElementById("u");
   const pEl = document.getElementById("p");
   const btn = document.getElementById("loginBtn");
+
+  // 🔒 ضمان أن كلمة المرور فارغة دائمًا
+  pEl.value = "";
 
   const onEnter = (e) => {
     if (e.key === "Enter") btn.click();
@@ -147,7 +156,6 @@ function renderMainDashboard() {
     <div class="hint-bar"></div>
 
     <div class="sections">
-
       <div class="section">
         <div class="section-title">
           <h3>الإدارة والتسجيل</h3>
@@ -155,10 +163,7 @@ function renderMainDashboard() {
         </div>
         <div class="action-grid">
           <button class="action-card" ${isAdmin ? "" : "disabled"} id="btnRegister">
-            <div class="action-text">
-              <div class="title">تسجيل متسابق جديد</div>
-              <div class="sub">إضافة يدويًا أو عبر CSV</div>
-            </div>
+            تسجيل متسابق جديد
           </button>
         </div>
       </div>
@@ -170,14 +175,10 @@ function renderMainDashboard() {
         </div>
         <div class="action-grid">
           <button class="action-card" ${isEval ? "" : "disabled"} id="btnCompetitors">
-            <div class="action-text">
-              <div class="title">المتسابقون</div>
-            </div>
+            المتسابقون
           </button>
           <button class="action-card" ${isEval ? "" : "disabled"} id="btnEvaluate">
-            <div class="action-text">
-              <div class="title">التقييم</div>
-            </div>
+            التقييم
           </button>
         </div>
       </div>
@@ -188,23 +189,14 @@ function renderMainDashboard() {
           <span>الجميع</span>
         </div>
         <div class="action-grid">
-          <button class="action-card" id="btnResults">
-            <div class="action-text">
-              <div class="title">النتائج</div>
-            </div>
-          </button>
-          <button class="action-card" id="btnLive">
-            <div class="action-text">
-              <div class="title">لوحة المتابعة المباشرة</div>
-            </div>
-          </button>
+          <button class="action-card" id="btnResults">النتائج</button>
+          <button class="action-card" id="btnLive">لوحة المتابعة المباشرة</button>
         </div>
       </div>
 
       <div class="actions">
         <button class="accent" id="btnLogout">تسجيل الخروج</button>
       </div>
-
     </div>
   `);
 
