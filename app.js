@@ -1,6 +1,6 @@
 const root = document.getElementById("screenRoot");
 const userMeta = document.getElementById("userMeta");
-const topLogout = document.getElementById("topLogout");
+const logoutBtn = document.getElementById("logoutBtn");
 
 const USERNAME_EMAIL_DOMAIN = "riyad.local";
 
@@ -21,8 +21,8 @@ let session = null; // { user, role, username }
 function setScreen(html) {
   root.innerHTML = html;
 }
-function setHeroBackground(isOn) {
-  document.body.classList.toggle("hero-bg", Boolean(isOn));
+function setHeroBackground(on) {
+  document.body.classList.toggle("hero-bg", Boolean(on));
 }
 function toEmail(input) {
   const v = (input || "").trim().toLowerCase();
@@ -30,10 +30,11 @@ function toEmail(input) {
   if (v.includes("@")) return v;
   return `${v}@${USERNAME_EMAIL_DOMAIN}`;
 }
+function setLogoutVisible(v) {
+  logoutBtn.style.display = v ? "flex" : "none";
+}
 
 async function loadProfileRole(user) {
-  if (!user) return { role: "Viewer", username: "" };
-
   const { data } = await sb
     .from("profiles")
     .select("role, username")
@@ -46,32 +47,51 @@ async function loadProfileRole(user) {
   };
 }
 
-function setLogoutVisible(isVisible) {
-  if (!topLogout) return;
-  topLogout.style.display = isVisible ? "flex" : "none";
+/* ===== Icons (minimal outline) ===== */
+function iconSvg(name) {
+  const s = `fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"`;
+  switch (name) {
+    case "add":
+      return `<svg viewBox="0 0 24 24" aria-hidden="true">
+        <path ${s} d="M15 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+        <path ${s} d="M8 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/>
+        <path ${s} d="M20 8v6"/><path ${s} d="M17 11h6"/>
+      </svg>`;
+    case "list":
+      return `<svg viewBox="0 0 24 24" aria-hidden="true">
+        <path ${s} d="M8 6h13"/><path ${s} d="M8 12h13"/><path ${s} d="M8 18h13"/>
+        <path ${s} d="M3 6h.01"/><path ${s} d="M3 12h.01"/><path ${s} d="M3 18h.01"/>
+      </svg>`;
+    case "eval":
+      return `<svg viewBox="0 0 24 24" aria-hidden="true">
+        <path ${s} d="M9 5h6"/><path ${s} d="M9 3h6a2 2 0 0 1 2 2v2H7V5a2 2 0 0 1 2-2z"/>
+        <path ${s} d="M7 7h10v14H7z"/><path ${s} d="M9 14l2 2 4-5"/>
+      </svg>`;
+    case "results":
+      return `<svg viewBox="0 0 24 24" aria-hidden="true">
+        <path ${s} d="M8 4h8v3a4 4 0 0 1-8 0V4z"/>
+        <path ${s} d="M6 4H4v3a4 4 0 0 0 4 4"/>
+        <path ${s} d="M18 4h2v3a4 4 0 0 1-4 4"/>
+        <path ${s} d="M12 11v4"/><path ${s} d="M9 21h6"/><path ${s} d="M10 15h4v6h-4z"/>
+      </svg>`;
+    case "live":
+      return `<svg viewBox="0 0 24 24" aria-hidden="true">
+        <path ${s} d="M4 19V5"/><path ${s} d="M4 19h16"/>
+        <path ${s} d="M8 17v-6"/><path ${s} d="M12 17v-10"/><path ${s} d="M16 17v-3"/>
+      </svg>`;
+    default:
+      return `<svg viewBox="0 0 24 24" aria-hidden="true"><path ${s} d="M4 12h16"/></svg>`;
+  }
 }
 
 /* ===== Screens ===== */
-function renderLoading(title = "جاري التحميل...") {
-  setHeroBackground(true);
-  userMeta.textContent = "";
-  setLogoutVisible(false);
-  setScreen(`
-    <div>
-      <h1 class="h1">${title}</h1>
-      <p class="p">لحظات...</p>
-      <div class="hint-bar"></div>
-    </div>
-  `);
-}
-
 function renderLogin(note = "") {
   setHeroBackground(true);
   userMeta.textContent = "";
   setLogoutVisible(false);
 
   setScreen(`
-    <div>
+    <div class="login-wrap">
       <h1 class="h1">تسجيل الدخول</h1>
       <p class="p">الدخول مخصص للمصرّح لهم فقط.</p>
       <div class="hint-bar"></div>
@@ -90,14 +110,16 @@ function renderLogin(note = "") {
         <button class="primary" id="loginBtn">دخول</button>
       </div>
 
-      ${note ? `<div class="notice" style="color:#b42318;">${note}</div>` : ""}
+      ${note ? `<div class="notice">${note}</div>` : ""}
     </div>
   `);
 
   const uEl = document.getElementById("u");
   const pEl = document.getElementById("p");
   const btn = document.getElementById("loginBtn");
-  pEl.value = ""; // ensure empty by default
+
+  // MUST be empty by default
+  pEl.value = "";
 
   const onEnter = (e) => e.key === "Enter" && btn.click();
   uEl.addEventListener("keydown", onEnter);
@@ -106,121 +128,68 @@ function renderLogin(note = "") {
   btn.onclick = async () => {
     const email = toEmail(uEl.value);
     const password = (pEl.value || "").trim();
-
     if (!password) return renderLogin("الرجاء إدخال كلمة المرور.");
-
-    renderLoading("تسجيل الدخول...");
 
     const { data, error } = await sb.auth.signInWithPassword({ email, password });
     if (error) return renderLogin("بيانات الدخول غير صحيحة.");
 
-    const user = data.user;
-    const profile = await loadProfileRole(user);
-    session = { user, role: profile.role, username: profile.username };
-
+    const profile = await loadProfileRole(data.user);
+    session = { user: data.user, role: profile.role, username: profile.username };
     renderMainDashboard();
   };
-}
-
-function svgIcon(name) {
-  // Minimal outline icons (consistent stroke)
-  const common = `fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"`;
-  switch (name) {
-    case "add_user":
-      return `<svg viewBox="0 0 24 24" aria-hidden="true">
-        <path ${common} d="M15 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-        <path ${common} d="M8 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/>
-        <path ${common} d="M20 8v6"/>
-        <path ${common} d="M17 11h6"/>
-      </svg>`;
-    case "users":
-      return `<svg viewBox="0 0 24 24" aria-hidden="true">
-        <path ${common} d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-        <path ${common} d="M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/>
-        <path ${common} d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-        <path ${common} d="M16 3.13a4 4 0 0 1 0 7.75"/>
-      </svg>`;
-    case "check_clipboard":
-      return `<svg viewBox="0 0 24 24" aria-hidden="true">
-        <path ${common} d="M9 5h6"/>
-        <path ${common} d="M9 3h6a2 2 0 0 1 2 2v2H7V5a2 2 0 0 1 2-2z"/>
-        <path ${common} d="M7 7h10v14H7z"/>
-        <path ${common} d="M9 14l2 2 4-5"/>
-      </svg>`;
-    case "trophy":
-      return `<svg viewBox="0 0 24 24" aria-hidden="true">
-        <path ${common} d="M8 4h8v3a4 4 0 0 1-8 0V4z"/>
-        <path ${common} d="M6 4H4v3a4 4 0 0 0 4 4"/>
-        <path ${common} d="M18 4h2v3a4 4 0 0 1-4 4"/>
-        <path ${common} d="M12 11v4"/>
-        <path ${common} d="M9 21h6"/>
-        <path ${common} d="M10 15h4v6h-4z"/>
-      </svg>`;
-    case "chart":
-      return `<svg viewBox="0 0 24 24" aria-hidden="true">
-        <path ${common} d="M4 19V5"/>
-        <path ${common} d="M4 19h16"/>
-        <path ${common} d="M8 17v-6"/>
-        <path ${common} d="M12 17v-10"/>
-        <path ${common} d="M16 17v-3"/>
-      </svg>`;
-    default:
-      return `<svg viewBox="0 0 24 24" aria-hidden="true"><path ${common} d="M4 12h16"/></svg>`;
-  }
 }
 
 function renderMainDashboard() {
   setHeroBackground(false);
   if (!session?.user) return renderLogin();
 
-  const role = session.role; // Admin | Evaluator | Viewer
+  const role = session.role;
   const isAdmin = role === "Admin";
   const isEval = role === "Admin" || role === "Evaluator";
 
   userMeta.textContent = `${session.username} • ${role}`;
   setLogoutVisible(true);
 
-  // Role-based access
+  // Permissions
   const canAdd = isAdmin;
-  const canViewCompetitors = isEval;
-  const canEvaluate = isEval;
+  const canView = isEval;
+  const canEval = isEval;
 
   setScreen(`
-    <div class="hub-header">
-      <h1 class="hub-title">اللوحة الرئيسية</h1>
+    <div class="hub-head">
+      <h2 class="hub-title">اللوحة الرئيسية</h2>
       <p class="hub-sub">اختر الإجراء المطلوب</p>
       <div class="hint-bar"></div>
     </div>
 
-    <div class="hub-grid" aria-label="لوحة التحكم">
+    <div class="hub-grid">
       <button class="hub-tile pos-1" ${canAdd ? "" : "disabled"} id="btnAdd">
-        <div class="hub-icon">${svgIcon("add_user")}</div>
+        <div class="hub-icon">${iconSvg("add")}</div>
         <div class="hub-label">إضافة متسابق</div>
       </button>
 
-      <button class="hub-tile pos-2" ${canViewCompetitors ? "" : "disabled"} id="btnView">
-        <div class="hub-icon">${svgIcon("users")}</div>
+      <button class="hub-tile pos-2" ${canView ? "" : "disabled"} id="btnView">
+        <div class="hub-icon">${iconSvg("list")}</div>
         <div class="hub-label">عرض المتسابقين</div>
       </button>
 
-      <button class="hub-tile pos-3" ${canEvaluate ? "" : "disabled"} id="btnEval">
-        <div class="hub-icon">${svgIcon("check_clipboard")}</div>
+      <button class="hub-tile pos-3" ${canEval ? "" : "disabled"} id="btnEval">
+        <div class="hub-icon">${iconSvg("eval")}</div>
         <div class="hub-label">التقييم</div>
       </button>
 
       <button class="hub-tile pos-4" id="btnResults">
-        <div class="hub-icon">${svgIcon("trophy")}</div>
+        <div class="hub-icon">${iconSvg("results")}</div>
         <div class="hub-label">النتائج</div>
       </button>
 
       <button class="hub-tile pos-5" id="btnLive">
-        <div class="hub-icon">${svgIcon("chart")}</div>
+        <div class="hub-icon">${iconSvg("live")}</div>
         <div class="hub-label">البيانات الحية</div>
       </button>
     </div>
   `);
 
-  // Navigation placeholders (we'll wire to real screens next)
   const noop = (name) => alert(`سنقوم ببناء شاشة: ${name} في الخطوة القادمة.`);
 
   document.getElementById("btnAdd")?.addEventListener("click", () => noop("إضافة متسابق"));
@@ -230,41 +199,21 @@ function renderMainDashboard() {
   document.getElementById("btnLive")?.addEventListener("click", () => noop("البيانات الحية"));
 }
 
-/* ===== Logout (top icon) ===== */
-topLogout?.addEventListener("click", async () => {
+/* Logout */
+logoutBtn.addEventListener("click", async () => {
   await sb.auth.signOut();
   session = null;
   renderLogin();
 });
 
-/* ===== Init ===== */
-async function initAuthFlow() {
-  renderLoading("تهيئة النظام...");
-
+/* Init */
+async function init() {
   const { data } = await sb.auth.getSession();
-  const sbSession = data?.session;
+  if (!data?.session?.user) return renderLogin();
 
-  if (!sbSession?.user) {
-    session = null;
-    return renderLogin();
-  }
-
-  const user = sbSession.user;
-  const profile = await loadProfileRole(user);
-  session = { user, role: profile.role, username: profile.username };
-
+  const profile = await loadProfileRole(data.session.user);
+  session = { user: data.session.user, role: profile.role, username: profile.username };
   renderMainDashboard();
-
-  sb.auth.onAuthStateChange(async (_event, newSession) => {
-    const user2 = newSession?.user;
-    if (!user2) {
-      session = null;
-      return renderLogin();
-    }
-    const profile2 = await loadProfileRole(user2);
-    session = { user: user2, role: profile2.role, username: profile2.username };
-    renderMainDashboard();
-  });
 }
 
-initAuthFlow();
+init();
