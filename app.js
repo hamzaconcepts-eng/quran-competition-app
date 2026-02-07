@@ -8,9 +8,9 @@ const userMeta = document.getElementById("userMeta");
  */
 const USERNAME_EMAIL_DOMAIN = "riyad.local";
 
-/* ===== Supabase Config ===== */
-const SUPABASE_URL = "https://puabskrqylxrzcczvnxk.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB1YWJza3JxeWx4cnpjY3p2bnhrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA0NTUxODEsImV4cCI6MjA4NjAzMTE4MX0.3ldFNJ4enLiPR7fuigX5C3o1BzIqQSSSe986MjvZFVc";
+/* ===== Supabase Config (NEW PROJECT) ===== */
+const SUPABASE_URL = "https://uqpumxbiqnccgqkiwzur.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxcHVteGJpcW5jY2dxa2l3enVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA0NjkxNDUsImV4cCI6MjA4NjA0NTE0NX0._HK-1dKy7897hQPlrZWAOiwPUB5q8u3X9HPiIQN3WQo";
 
 /* global supabase */
 const { createClient } = supabase;
@@ -37,6 +37,11 @@ function showError(msg) {
 function usernameToEmail(username) {
   return `${username}@${USERNAME_EMAIL_DOMAIN}`;
 }
+
+/* ===== Role Fetch =====
+   We read role from public.profiles:
+   profiles(id uuid pk references auth.users(id), username text, role text)
+*/
 async function loadProfileRole(user) {
   if (!user) return { role: "Viewer", username: "" };
 
@@ -46,7 +51,10 @@ async function loadProfileRole(user) {
     .eq("id", user.id)
     .maybeSingle();
 
-  if (error) return { role: "Viewer", username: user.email?.split("@")[0] || "" };
+  // If profiles isn't created / policy issue, fallback to Viewer safely
+  if (error) {
+    return { role: "Viewer", username: user.email?.split("@")[0] || "" };
+  }
 
   const role = (data?.role || "Viewer").trim();
   const username = (data?.username || user.email?.split("@")[0] || "").trim();
@@ -132,9 +140,11 @@ function renderMainDashboard() {
   userMeta.textContent = `${session.username} • ${role}`;
 
   const roleDotColor =
-    role === "Admin" ? "style='background: rgba(255,134,4,.95); box-shadow:0 0 0 4px rgba(255,134,4,.18)'" :
-    role === "Evaluator" ? "style='background: rgba(117,191,192,.95); box-shadow:0 0 0 4px rgba(117,191,192,.18)'" :
-    "style='background: rgba(253,214,97,.95); box-shadow:0 0 0 4px rgba(253,214,97,.18)'";
+    role === "Admin"
+      ? "style='background: rgba(255,134,4,.95); box-shadow:0 0 0 4px rgba(255,134,4,.18)'"
+      : role === "Evaluator"
+      ? "style='background: rgba(117,191,192,.95); box-shadow:0 0 0 4px rgba(117,191,192,.18)'"
+      : "style='background: rgba(253,214,97,.95); box-shadow:0 0 0 4px rgba(253,214,97,.18)'";
 
   const noop = () => alert("هذه الشاشة سنبنيها كخطوة قادمة بشكل نهائي.");
 
@@ -248,7 +258,6 @@ function renderMainDashboard() {
     </div>
   `);
 
-  // Wiring (placeholders now)
   document.getElementById("btnRegister")?.addEventListener("click", noop);
   document.getElementById("btnCompetitors")?.addEventListener("click", noop);
   document.getElementById("btnEvaluate")?.addEventListener("click", noop);
